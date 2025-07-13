@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Scout Suite to PlexTrac Converter (v2.2.2)
+Scout Suite to PlexTrac Converter (v2.2.3)
 
 A production-ready tool to convert Scout Suite JSON report output into a
 feature-rich, PlexTrac-compliant CSV format. This version focuses on providing
@@ -76,15 +76,21 @@ class ScoutSuiteToPlexTrac:
         return re.sub('<[^<]+?>', '', text).strip() if text else ""
 
     def _resolve_path(self, data, path_str):
-        """Resolves a dot-separated path string within a nested dictionary."""
+        """
+        FIXED: Robustly resolves a dot-separated path string within the report's
+        nested dictionary and list structure.
+        """
         try:
             value = data
             for key in path_str.split('.'):
-                if isinstance(value, dict) and key in value:
+                if isinstance(value, list) and key.isdigit() and int(key) < len(value):
+                    value = value[int(key)]
+                elif isinstance(value, dict) and key in value:
                     value = value[key]
-                else: return None
+                else:
+                    return None  # Path segment not found
             return value
-        except (KeyError, IndexError, TypeError):
+        except (ValueError, TypeError):
             return None
 
     def _get_asset_details(self, scout_data, item_path):
@@ -102,13 +108,12 @@ class ScoutSuiteToPlexTrac:
         if not asset_id:
             asset_id = parent_path.split('.')[-1]
 
-        # FIX: Revert to parsing region from the path for reliability
         region_match = re.search(r'\.regions\.([\w-]+)\.', item_path)
         region = region_match.group(1) if region_match else 'global'
 
         details_to_show = {k: v for k, v in resource_obj.items() if isinstance(v, (str, int, bool)) and k not in ['id', 'name', 'arn']}
         formatted_details = "\n".join(f"* **{k}:** {v}" for k, v in sorted(details_to_show.items()))
-        
+
         return asset_id, region, formatted_details
 
     def parse_report(self):
@@ -139,7 +144,7 @@ class ScoutSuiteToPlexTrac:
 
         title = ' '.join(word.capitalize() for word in f_id.replace('-', ' ').split())
         title = f"{service.upper()}: {title}"
-        
+
         return {
             'title': title, 'severity': plextrac_severity, 'status': 'Open',
             'description': full_description,
@@ -165,7 +170,7 @@ class ScoutSuiteToPlexTrac:
                 raw_finding_count += 1
 
                 all_assets = [self._get_asset_details(scout_data, path) for path in f_data.get('items', [])]
-                
+
                 filtered_assets = [a for a in all_assets if not self.regions_filter or a[1] in self.regions_filter]
                 if not filtered_assets: continue
 
@@ -178,7 +183,7 @@ class ScoutSuiteToPlexTrac:
                     description_details = "\n\n".join(f"**Resource:** `{a[0]}`\n{a[2]}" for a in filtered_assets if a[2])
                     finding = self._create_plextrac_finding(service, f_id, f_data, asset_ids, description_details)
                     if finding: plextrac_findings.append(finding)
-        
+
         self._log(f"Found {raw_finding_count} rules with flagged items.")
         self._log(f"Processed {len(plextrac_findings)} findings after filtering.", 'SUCCESS')
         return plextrac_findings
@@ -213,7 +218,7 @@ class ScoutSuiteToPlexTrac:
 
     def run(self):
         """Orchestrates the entire conversion process."""
-        print(f"\n{Colors.BOLD}--- Scout Suite to PlexTrac Converter v2.2.2 ---{Colors.ENDC}")
+        print(f"\n{Colors.BOLD}--- Scout Suite to PlexTrac Converter v2.2.3 ---{Colors.ENDC}")
         self._log(f"Input File:           {self.input_file}")
         self._log(f"Output File:          {self.output_file}")
         self._log(f"Minimum Severity:     {self.min_severity or 'All'}")
@@ -233,6 +238,7 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter,
         epilog="""
 Usage Examples:
+
   # Basic conversion (consolidates findings, accurate assets, rich descriptions)
   python %(prog)s scoutsuite_results_aws.js
 
@@ -242,16 +248,16 @@ Usage Examples:
     )
     parser.add_argument('input_file', help='Path to the source Scout Suite report file (JSON/JS format).')
     parser.add_argument('-o', '--output', dest='output_file', help='Output CSV file path. Defaults to "<input_file>_plextrac.csv".')
-    
+
     filter_group = parser.add_argument_group('Filtering Options')
     filter_group.add_argument('--min-severity', choices=['Critical', 'High', 'Medium', 'Low', 'Informational'], help='Filter to include findings of this severity or higher.')
     filter_group.add_argument('--regions', type=lambda s: [item.strip() for item in s.split(',')], help='Comma-separated list of cloud regions to include (e.g., "us-east-1,eu-west-2").')
-    
+
     format_group = parser.add_argument_group('Output Formatting Options')
     format_group.add_argument('--explode-findings', action='store_true', help='Disables consolidation. Creates a separate finding for each affected asset.')
-    
+
     args = parser.parse_args()
-    
+
     options = {
         'min_severity': args.min_severity,
         'regions': args.regions,
