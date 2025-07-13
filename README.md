@@ -105,3 +105,36 @@ When you import the CSV, PlexTrac will automatically map the evidence from this 
 5.  Map the columns if necessary (they should map automatically) and complete the import.
 
 <!-- end list -->
+
+
+
+### Example Runtime Output
+
+Running the tool is now a much more informative experience. Here is an example of what you'll see when you run it with filters:
+
+```bash
+$ python scout_to_plextrac.py scoutsuite_results_aws.js --min-severity High --regions us-east-1
+
+--- Scout Suite to PlexTrac Converter v2.1 ---
+[INFO   ] Input File:           scoutsuite_results_aws.js
+[INFO   ] Output File:          scoutsuite_results_aws_plextrac.csv
+[INFO   ] Minimum Severity:     High
+[INFO   ] Regions:              us-east-1
+[INFO   ] Consolidate Findings: True
+[INFO   ] Include Evidence:     False
+--------------------------------------------
+[INFO   ] Reading report: scoutsuite_results_aws.js
+[SUCCESS] Report parsed successfully.
+[INFO   ] Processing findings...
+[INFO   ] Found 48 rules with flagged items.
+[SUCCESS] Processed 21 findings after filtering.
+
+--- Findings Breakdown ---
+  Critical       : 8
+  High           : 13
+------------------------
+[INFO   ] Writing 21 findings to scoutsuite_results_aws_plextrac.csv...
+[SUCCESS] CSV file written successfully.
+[SUCCESS] 
+Conversion complete! Upload 'scoutsuite_results_aws_plextrac.csv' to PlexTrac.
+```
