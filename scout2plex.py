@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Scout Suite to PlexTrac Converter (v2.2.1)
+Scout Suite to PlexTrac Converter (v2.2.2)
 
 A production-ready tool to convert Scout Suite JSON report output into a
 feature-rich, PlexTrac-compliant CSV format. This version focuses on providing
@@ -42,7 +42,6 @@ class ScoutSuiteToPlexTrac:
         'Critical': 5, 'High': 4, 'Medium': 3,
         'Low': 2, 'Informational': 1
     }
-    # Preferred keys to find a resource's true identifier, in order of priority
     ASSET_ID_KEYS = [
         'Arn', 'arn', 'ARN', 'DBInstanceIdentifier', 'id', 'name',
         'BucketName', 'ClusterIdentifier', 'FunctionName', 'LoadBalancerName',
@@ -60,16 +59,13 @@ class ScoutSuiteToPlexTrac:
         self.min_severity = kwargs.get('min_severity')
         self.regions_filter = kwargs.get('regions') or []
         self.explode_findings = kwargs.get('explode_findings', False)
-        
-        # The 'include_evidence' feature is now integrated into the description.
-        # This header is kept for potential future use or customization.
+
         self.plextrac_headers = [
             'title', 'severity', 'status', 'description', 'recommendations',
             'references', 'affected_assets', 'tags', 'cvss_temporal',
             'cwe', 'cve', 'category'
         ]
 
-    # --- Logging and Utility Methods ---
     def _log(self, message, level='INFO'):
         """Prints a formatted log message."""
         color_map = {'INFO': Colors.BLUE, 'SUCCESS': Colors.GREEN, 'WARN': Colors.YELLOW, 'ERROR': Colors.RED}
@@ -102,11 +98,13 @@ class ScoutSuiteToPlexTrac:
         if not isinstance(resource_obj, dict):
             return item_path.split('.')[-2], 'unknown', "*No details available.*"
 
-        asset_id = next((resource_obj[key] for key in self.ASSET_ID_KEYS if key in resource_obj), None)
+        asset_id = next((resource_obj[key] for key in self.ASSET_ID_KEYS if key in resource_obj and resource_obj[key]), None)
         if not asset_id:
             asset_id = parent_path.split('.')[-1]
 
-        region = resource_obj.get('region', resource_obj.get('Region', 'global'))
+        # FIX: Revert to parsing region from the path for reliability
+        region_match = re.search(r'\.regions\.([\w-]+)\.', item_path)
+        region = region_match.group(1) if region_match else 'global'
 
         details_to_show = {k: v for k, v in resource_obj.items() if isinstance(v, (str, int, bool)) and k not in ['id', 'name', 'arn']}
         formatted_details = "\n".join(f"* **{k}:** {v}" for k, v in sorted(details_to_show.items()))
@@ -215,7 +213,7 @@ class ScoutSuiteToPlexTrac:
 
     def run(self):
         """Orchestrates the entire conversion process."""
-        print(f"\n{Colors.BOLD}--- Scout Suite to PlexTrac Converter v2.2.1 ---{Colors.ENDC}")
+        print(f"\n{Colors.BOLD}--- Scout Suite to PlexTrac Converter v2.2.2 ---{Colors.ENDC}")
         self._log(f"Input File:           {self.input_file}")
         self._log(f"Output File:          {self.output_file}")
         self._log(f"Minimum Severity:     {self.min_severity or 'All'}")
@@ -235,7 +233,6 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter,
         epilog="""
 Usage Examples:
-
   # Basic conversion (consolidates findings, accurate assets, rich descriptions)
   python %(prog)s scoutsuite_results_aws.js
 
@@ -255,7 +252,6 @@ Usage Examples:
     
     args = parser.parse_args()
     
-    # This dictionary now correctly contains only the optional keyword arguments.
     options = {
         'min_severity': args.min_severity,
         'regions': args.regions,
