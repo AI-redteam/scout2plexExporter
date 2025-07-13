@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Scout Suite to PlexTrac Converter (v2.1.1)
+Scout Suite to PlexTrac Converter (v2.1.2)
 
 A production-ready tool to convert Scout Suite JSON report output into a
 feature-rich, PlexTrac-compliant CSV format. This enhanced version includes
@@ -56,7 +56,6 @@ class ScoutSuiteToPlexTrac:
 
         # Processing options from argparse
         self.min_severity = kwargs.get('min_severity')
-        # Correctly handle optional regions argument to prevent TypeErrors
         self.regions_filter = kwargs.get('regions') or []
         self.explode_findings = kwargs.get('explode_findings', False)
         self.include_evidence = kwargs.get('include_evidence', False)
@@ -157,7 +156,7 @@ class ScoutSuiteToPlexTrac:
             'title': title, 'severity': plextrac_severity, 'status': 'Open',
             'description': full_description,
             'recommendations': self._strip_html(f_data.get('remediation', 'N/A')),
-            'references': ', '.join(f_data.get('references', [])),
+            'references': ', '.join(f_data.get('references') or []),
             'affected_assets': ', '.join(sorted(assets)),
             'tags': ', '.join(tags),
             'cvss_temporal': '', 'cwe': '', 'cve': '',
@@ -174,8 +173,9 @@ class ScoutSuiteToPlexTrac:
         raw_finding_count = 0
 
         for service, service_data in scout_data.get('services', {}).items():
+            if not isinstance(service_data, dict): continue
             for finding_id, f_data in service_data.get('findings', {}).items():
-                if f_data.get('flagged_items', 0) == 0:
+                if not isinstance(f_data, dict) or f_data.get('flagged_items', 0) == 0:
                     continue
                 raw_finding_count += 1
 
@@ -227,6 +227,7 @@ class ScoutSuiteToPlexTrac:
             self._log("CSV file written successfully.", 'SUCCESS')
         except Exception as e:
             self._log(f"Failed to write CSV file: {e}", 'ERROR')
+            sys.exit(1)
 
     def print_summary(self, findings):
         """Prints a final summary of the generated findings by severity."""
@@ -246,7 +247,7 @@ class ScoutSuiteToPlexTrac:
 
     def run(self):
         """Main conversion process."""
-        print(f"\n{Colors.BOLD}--- Scout Suite to PlexTrac Converter v2.1.1 ---{Colors.ENDC}")
+        print(f"\n{Colors.BOLD}--- Scout Suite to PlexTrac Converter v2.1.2 ---{Colors.ENDC}")
         self._log(f"Input File:           {self.input_file}")
         self._log(f"Output File:          {self.output_file}")
         self._log(f"Minimum Severity:     {self.min_severity or 'All'}")
