@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Scout Suite to PlexTrac Converter (v2.1)
+Scout Suite to PlexTrac Converter (v2.1.1)
 
-A production-ready tool to convert Scout Suite JSON report output into a 
-feature-rich, PlexTrac-compliant CSV format. This enhanced version includes 
+A production-ready tool to convert Scout Suite JSON report output into a
+feature-rich, PlexTrac-compliant CSV format. This enhanced version includes
 advanced filtering, finding deduplication, and evidence extraction capabilities.
 """
 
@@ -14,17 +14,6 @@ import os
 import sys
 import re
 from pathlib import Path
-
-art = '''
-     _______.  ______   ______    __    __  .___________.___   .______    __       __________   ___ 
-    /       | /      | /  __  \  |  |  |  | |           |__ \  |   _  \  |  |     |   ____\  \ /  / 
-   |   (----`|  ,----'|  |  |  | |  |  |  | `---|  |----`  ) | |  |_)  | |  |     |  |__   \  V  /  
-    \   \    |  |     |  |  |  | |  |  |  |     |  |      / /  |   ___/  |  |     |   __|   >   <   
-.----)   |   |  `----.|  `--'  | |  `--'  |     |  |     / /_  |  |      |  `----.|  |____ /  .  \  
-|_______/     \______| \______/   \______/      |__|    |____| | _|      |_______||_______/__/ \__\ 
-                                                                                                    
-'''
-print(art)
 
 # --- Constants for colored output ---
 class Colors:
@@ -67,7 +56,8 @@ class ScoutSuiteToPlexTrac:
 
         # Processing options from argparse
         self.min_severity = kwargs.get('min_severity')
-        self.regions_filter = kwargs.get('regions', [])
+        # Correctly handle optional regions argument to prevent TypeErrors
+        self.regions_filter = kwargs.get('regions') or []
         self.explode_findings = kwargs.get('explode_findings', False)
         self.include_evidence = kwargs.get('include_evidence', False)
 
@@ -111,7 +101,7 @@ class ScoutSuiteToPlexTrac:
         """Extracts an asset's name and region from its item path string."""
         region_match = re.search(r'\.regions\.([\w-]+)\.', item_path)
         region = region_match.group(1) if region_match else 'global'
-        
+
         asset_name = item_path.split('.')[-1]
         if asset_name in self.SEVERITY_MAPPING or asset_name.lower() in ["true", "false"]:
              asset_name = item_path.split('.')[-2]
@@ -132,7 +122,7 @@ class ScoutSuiteToPlexTrac:
 
             if 'services' not in data or 'provider_code' not in data:
                 raise ValueError("File is missing 'services' or 'provider_code' keys.")
-            
+
             self._log("Report parsed successfully.", 'SUCCESS')
             return data
         except FileNotFoundError:
@@ -146,21 +136,21 @@ class ScoutSuiteToPlexTrac:
     def _format_plextrac_finding(self, service, f_id, f_data, assets, evidence=""):
         """Formats and filters a single finding before it's added to the final list."""
         plextrac_severity = self.SEVERITY_MAPPING.get(f_data.get('level', ''), 'Informational')
-        
+
         # Severity Filter
         if self.min_severity and self.SEVERITY_RANK.get(plextrac_severity, 0) < self.SEVERITY_RANK.get(self.min_severity, 0):
             return None
-        
+
         # Prepare fields
         title = ' '.join(word.capitalize() for word in f_id.replace('-', ' ').split())
         title = f"{service.upper()}: {title}"
         if self.explode_findings and len(assets) == 1:
              title += f" in {assets[0]}"
-        
+
         description = self._strip_html(f_data.get('description', ''))
         rationale = self._strip_html(f_data.get('rationale', ''))
         full_description = f"{description}\n\n**Rationale:**\n{rationale}" if rationale else description
-        
+
         tags = [service, 'scout-suite', f_data.get('provider_code', 'cloud')]
 
         finding = {
@@ -188,9 +178,9 @@ class ScoutSuiteToPlexTrac:
                 if f_data.get('flagged_items', 0) == 0:
                     continue
                 raw_finding_count += 1
-                
+
                 all_assets = {path: self._get_asset_details(path) for path in f_data.get('items', [])}
-                
+
                 # Apply region filtering to the assets of this finding
                 filtered_assets = {
                     path: details for path, details in all_assets.items()
@@ -213,11 +203,11 @@ class ScoutSuiteToPlexTrac:
                     if self.include_evidence:
                         evidence_list = [json.dumps(self._resolve_path(scout_data, path), indent=2) for path in filtered_assets]
                         evidence = "\n\n---\n\n".join(evidence_list)
-                    
+
                     finding = self._format_plextrac_finding(service, finding_id, f_data, asset_names, evidence)
                     if finding:
                         plextrac_findings.append(finding)
-        
+
         self._log(f"Found {raw_finding_count} rules with flagged items.")
         self._log(f"Processed {len(plextrac_findings)} findings after filtering.", 'SUCCESS')
         return plextrac_findings
@@ -242,13 +232,13 @@ class ScoutSuiteToPlexTrac:
         """Prints a final summary of the generated findings by severity."""
         if not findings:
             return
-        
+
         print("\n--- Findings Breakdown ---")
         counts = {}
         for finding in findings:
             severity = finding['severity']
             counts[severity] = counts.get(severity, 0) + 1
-        
+
         for severity in ['Critical', 'High', 'Medium', 'Low', 'Informational']:
             if counts.get(severity, 0) > 0:
                 print(f"  {severity.ljust(15)}: {counts[severity]}")
@@ -256,22 +246,22 @@ class ScoutSuiteToPlexTrac:
 
     def run(self):
         """Main conversion process."""
-        print(f"\n{Colors.BOLD}--- Scout Suite to PlexTrac Converter v2.1 ---{Colors.ENDC}")
+        print(f"\n{Colors.BOLD}--- Scout Suite to PlexTrac Converter v2.1.1 ---{Colors.ENDC}")
         self._log(f"Input File:           {self.input_file}")
         self._log(f"Output File:          {self.output_file}")
         self._log(f"Minimum Severity:     {self.min_severity or 'All'}")
         self._log(f"Regions:              {', '.join(self.regions_filter) or 'All'}")
         self._log(f"Consolidate Findings: {not self.explode_findings}")
         self._log(f"Include Evidence:     {self.include_evidence}")
-        print("-" * 44)
+        print("-" * 46)
 
         scout_data = self.parse_report()
         findings = self.process_findings(scout_data)
         self.print_summary(findings)
         self.write_csv(findings)
-        
+
         self._log(f"\nConversion complete! Upload '{self.output_file}' to PlexTrac.", "SUCCESS")
-        
+
 def main():
     """Main function to handle command-line arguments and run the converter."""
     parser = argparse.ArgumentParser(
@@ -279,21 +269,21 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter,
         epilog="""
 Usage Examples:
-  
+
   # Basic conversion (consolidates findings by default)
   python %(prog)s scoutsuite_results_aws.js
 
   # Filter for high/critical findings in us-east-1 and include JSON evidence
   python %(prog)s report.js -o critical.csv --min-severity High --regions us-east-1 --include-evidence
-  
+
   # Create a separate finding for each affected asset (no consolidation)
   python %(prog)s report.js --explode-findings
 """
     )
-    
+
     parser.add_argument('input_file', help='Path to the source Scout Suite report file (JSON/JS format).')
     parser.add_argument('-o', '--output', dest='output_file', help='Output CSV file path. Defaults to "<input_file>_plextrac.csv".')
-    
+
     filter_group = parser.add_argument_group('Filtering Options')
     filter_group.add_argument('--min-severity', choices=['Critical', 'High', 'Medium', 'Low', 'Informational'],
                               help='Filter to include findings of this severity or higher.')
@@ -307,7 +297,8 @@ Usage Examples:
                               help='Extracts resource JSON as evidence into a "code_sample" custom field.')
 
     args = parser.parse_args()
-    
+
+    # Prepare options for the converter class
     options = {
         'min_severity': args.min_severity,
         'regions': args.regions,
