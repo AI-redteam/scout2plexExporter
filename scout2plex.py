@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Scout Suite to PlexTrac Converter (v2.2.0)
+Scout Suite to PlexTrac Converter (v2.2.1)
 
 A production-ready tool to convert Scout Suite JSON report output into a
 feature-rich, PlexTrac-compliant CSV format. This version focuses on providing
@@ -60,16 +60,16 @@ class ScoutSuiteToPlexTrac:
         self.min_severity = kwargs.get('min_severity')
         self.regions_filter = kwargs.get('regions') or []
         self.explode_findings = kwargs.get('explode_findings', False)
-        self.include_evidence = kwargs.get('include_evidence', False)
-
+        
+        # The 'include_evidence' feature is now integrated into the description.
+        # This header is kept for potential future use or customization.
         self.plextrac_headers = [
             'title', 'severity', 'status', 'description', 'recommendations',
             'references', 'affected_assets', 'tags', 'cvss_temporal',
             'cwe', 'cve', 'category'
         ]
-        if self.include_evidence:
-            self.plextrac_headers.append('code_sample')
 
+    # --- Logging and Utility Methods ---
     def _log(self, message, level='INFO'):
         """Prints a formatted log message."""
         color_map = {'INFO': Colors.BLUE, 'SUCCESS': Colors.GREEN, 'WARN': Colors.YELLOW, 'ERROR': Colors.RED}
@@ -93,31 +93,23 @@ class ScoutSuiteToPlexTrac:
 
     def _get_asset_details(self, scout_data, item_path):
         """
-        NEW: Resolves an item path to find the resource's true identifier (ARN/Name)
+        Resolves an item path to find the resource's true identifier (ARN/Name)
         and formats its key details for the description field.
         """
-        # The finding often points to a specific attribute, so we get the parent object
         parent_path = ".".join(item_path.split('.')[:-1])
         resource_obj = self._resolve_path(scout_data, parent_path)
 
         if not isinstance(resource_obj, dict):
-            # Fallback if path doesn't resolve to a dictionary object
             return item_path.split('.')[-2], 'unknown', "*No details available.*"
 
-        # 1. Find the best possible identifier (ARN or Name)
         asset_id = next((resource_obj[key] for key in self.ASSET_ID_KEYS if key in resource_obj), None)
         if not asset_id:
-            asset_id = parent_path.split('.')[-1] # Fallback to part of the path
+            asset_id = parent_path.split('.')[-1]
 
-        # 2. Determine the region
         region = resource_obj.get('region', resource_obj.get('Region', 'global'))
 
-        # 3. Format key-value details for the description field
-        details_to_show = {
-            k: v for k, v in resource_obj.items()
-            if isinstance(v, (str, int, bool)) and k not in ['id', 'name', 'arn']
-        }
-        formatted_details = "\n".join(f"* **{k}:** {v}" for k, v in details_to_show.items())
+        details_to_show = {k: v for k, v in resource_obj.items() if isinstance(v, (str, int, bool)) and k not in ['id', 'name', 'arn']}
+        formatted_details = "\n".join(f"* **{k}:** {v}" for k, v in sorted(details_to_show.items()))
         
         return asset_id, region, formatted_details
 
@@ -139,11 +131,9 @@ class ScoutSuiteToPlexTrac:
         """Builds and filters a single PlexTrac finding dictionary."""
         plextrac_severity = self.SEVERITY_MAPPING.get(f_data.get('level', ''), 'Informational')
 
-        # Severity Filter
         if self.min_severity and self.SEVERITY_RANK.get(plextrac_severity, 0) < self.SEVERITY_RANK.get(self.min_severity, 0):
             return None
 
-        # --- Build Enriched Description ---
         description = self._strip_html(f_data.get('description', ''))
         rationale = self._strip_html(f_data.get('rationale', ''))
         full_description = f"{description}\n\n**Rationale:**\n{rationale if rationale else 'Not provided.'}"
@@ -152,7 +142,7 @@ class ScoutSuiteToPlexTrac:
         title = ' '.join(word.capitalize() for word in f_id.replace('-', ' ').split())
         title = f"{service.upper()}: {title}"
         
-        finding = {
+        return {
             'title': title, 'severity': plextrac_severity, 'status': 'Open',
             'description': full_description,
             'recommendations': self._strip_html(f_data.get('remediation', 'N/A')),
@@ -162,9 +152,6 @@ class ScoutSuiteToPlexTrac:
             'cvss_temporal': '', 'cwe': '', 'cve': '',
             'category': service.capitalize()
         }
-        if self.include_evidence:
-            finding['code_sample'] = "See description for formatted resource details."
-        return finding
 
     def process_findings(self, scout_data):
         """Main loop to extract, filter, and format findings."""
@@ -181,7 +168,6 @@ class ScoutSuiteToPlexTrac:
 
                 all_assets = [self._get_asset_details(scout_data, path) for path in f_data.get('items', [])]
                 
-                # Region Filter
                 filtered_assets = [a for a in all_assets if not self.regions_filter or a[1] in self.regions_filter]
                 if not filtered_assets: continue
 
@@ -191,7 +177,7 @@ class ScoutSuiteToPlexTrac:
                         if finding: plextrac_findings.append(finding)
                 else:
                     asset_ids = {a[0] for a in filtered_assets}
-                    description_details = "\n\n".join(f"**Resource:** `{a[0]}`\n{a[2]}" for a in filtered_assets)
+                    description_details = "\n\n".join(f"**Resource:** `{a[0]}`\n{a[2]}" for a in filtered_assets if a[2])
                     finding = self._create_plextrac_finding(service, f_id, f_data, asset_ids, description_details)
                     if finding: plextrac_findings.append(finding)
         
@@ -229,7 +215,7 @@ class ScoutSuiteToPlexTrac:
 
     def run(self):
         """Orchestrates the entire conversion process."""
-        print(f"\n{Colors.BOLD}--- Scout Suite to PlexTrac Converter v2.2.0 ---{Colors.ENDC}")
+        print(f"\n{Colors.BOLD}--- Scout Suite to PlexTrac Converter v2.2.1 ---{Colors.ENDC}")
         self._log(f"Input File:           {self.input_file}")
         self._log(f"Output File:          {self.output_file}")
         self._log(f"Minimum Severity:     {self.min_severity or 'All'}")
@@ -249,6 +235,7 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter,
         epilog="""
 Usage Examples:
+
   # Basic conversion (consolidates findings, accurate assets, rich descriptions)
   python %(prog)s scoutsuite_results_aws.js
 
@@ -258,16 +245,25 @@ Usage Examples:
     )
     parser.add_argument('input_file', help='Path to the source Scout Suite report file (JSON/JS format).')
     parser.add_argument('-o', '--output', dest='output_file', help='Output CSV file path. Defaults to "<input_file>_plextrac.csv".')
+    
     filter_group = parser.add_argument_group('Filtering Options')
     filter_group.add_argument('--min-severity', choices=['Critical', 'High', 'Medium', 'Low', 'Informational'], help='Filter to include findings of this severity or higher.')
     filter_group.add_argument('--regions', type=lambda s: [item.strip() for item in s.split(',')], help='Comma-separated list of cloud regions to include (e.g., "us-east-1,eu-west-2").')
+    
     format_group = parser.add_argument_group('Output Formatting Options')
     format_group.add_argument('--explode-findings', action='store_true', help='Disables consolidation. Creates a separate finding for each affected asset.')
-    # The --include-evidence flag is now deprecated as details are in the description
-    # format_group.add_argument('--include-evidence', action='store_true', help='Extracts resource JSON into a "code_sample" field.')
+    
     args = parser.parse_args()
-    options = vars(args)
+    
+    # This dictionary now correctly contains only the optional keyword arguments.
+    options = {
+        'min_severity': args.min_severity,
+        'regions': args.regions,
+        'explode_findings': args.explode_findings,
+    }
+
     ScoutSuiteToPlexTrac(args.input_file, args.output_file, **options).run()
+
 
 if __name__ == '__main__':
     main()
